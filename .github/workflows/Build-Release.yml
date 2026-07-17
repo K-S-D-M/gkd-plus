@@ -30,11 +30,15 @@ jobs:
 
       - name: write play secrets info
         run: |
-          echo ${{ secrets.PLAY_STORE_FILE_BASE64 }} | base64 --decode > ${{ github.workspace }}/play.jks
-          echo PLAY_STORE_FILE='${{ github.workspace }}/play.jks' >> gradle.properties
-          echo PLAY_STORE_PASSWORD='${{ secrets.PLAY_STORE_PASSWORD }}' >> gradle.properties
-          echo PLAY_KEY_ALIAS='${{ secrets.PLAY_KEY_ALIAS }}' >> gradle.properties
-          echo PLAY_KEY_PASSWORD='${{ secrets.PLAY_KEY_PASSWORD }}' >> gradle.properties
+          if [ -n "${{ secrets.PLAY_STORE_FILE_BASE64 }}" ]; then
+            printf '%s' '${{ secrets.PLAY_STORE_FILE_BASE64 }}' | base64 --decode > ${{ github.workspace }}/play.jks
+            echo PLAY_STORE_FILE='${{ github.workspace }}/play.jks' >> gradle.properties
+            echo PLAY_STORE_PASSWORD='${{ secrets.PLAY_STORE_PASSWORD }}' >> gradle.properties
+            echo PLAY_KEY_ALIAS='${{ secrets.PLAY_KEY_ALIAS }}' >> gradle.properties
+            echo PLAY_KEY_PASSWORD='${{ secrets.PLAY_KEY_PASSWORD }}' >> gradle.properties
+          else
+            echo "PLAY_STORE_FILE_BASE64 is not set; Play release will use the GKD signing config fallback."
+          fi
 
       - run: chmod 777 ./gradlew
       - run: ./gradlew app:assembleGkdRelease app:bundlePlayRelease
