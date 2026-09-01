@@ -22,20 +22,34 @@ jobs:
 
       - name: write gkd secrets info
         run: |
-          echo ${{ secrets.GKD_STORE_FILE_BASE64 }} | base64 --decode > ${{ github.workspace }}/gkd.jks
-          echo GKD_STORE_FILE='${{ github.workspace }}/gkd.jks' >> gradle.properties
-          echo GKD_STORE_PASSWORD='${{ secrets.GKD_STORE_PASSWORD }}' >> gradle.properties
-          echo GKD_KEY_ALIAS='${{ secrets.GKD_KEY_ALIAS }}' >> gradle.properties
-          echo GKD_KEY_PASSWORD='${{ secrets.GKD_KEY_PASSWORD }}' >> gradle.properties
+          if [ -n "${{ secrets.GKD_STORE_FILE_BASE64 }}" ]; then
+            printf '%s' '${{ secrets.GKD_STORE_FILE_BASE64 }}' | base64 --decode > ${{ github.workspace }}/gkd.jks
+            if ! keytool -list -keystore ${{ github.workspace }}/gkd.jks -storepass '${{ secrets.GKD_STORE_PASSWORD }}' -alias '${{ secrets.GKD_KEY_ALIAS }}' -keypass '${{ secrets.GKD_KEY_PASSWORD }}' > /dev/null 2>&1; then
+              echo "GKD keystore is invalid, falling back to debug signing"
+              rm -f ${{ github.workspace }}/gkd.jks
+            else
+              echo GKD_STORE_FILE='${{ github.workspace }}/gkd.jks' >> gradle.properties
+              echo GKD_STORE_PASSWORD='${{ secrets.GKD_STORE_PASSWORD }}' >> gradle.properties
+              echo GKD_KEY_ALIAS='${{ secrets.GKD_KEY_ALIAS }}' >> gradle.properties
+              echo GKD_KEY_PASSWORD='${{ secrets.GKD_KEY_PASSWORD }}' >> gradle.properties
+            fi
+          else
+            echo "GKD_STORE_FILE_BASE64 is not set; release will use debug signing."
+          fi
 
       - name: write play secrets info
         run: |
           if [ -n "${{ secrets.PLAY_STORE_FILE_BASE64 }}" ]; then
             printf '%s' '${{ secrets.PLAY_STORE_FILE_BASE64 }}' | base64 --decode > ${{ github.workspace }}/play.jks
-            echo PLAY_STORE_FILE='${{ github.workspace }}/play.jks' >> gradle.properties
-            echo PLAY_STORE_PASSWORD='${{ secrets.PLAY_STORE_PASSWORD }}' >> gradle.properties
-            echo PLAY_KEY_ALIAS='${{ secrets.PLAY_KEY_ALIAS }}' >> gradle.properties
-            echo PLAY_KEY_PASSWORD='${{ secrets.PLAY_KEY_PASSWORD }}' >> gradle.properties
+            if keytool -list -keystore ${{ github.workspace }}/play.jks -storepass '${{ secrets.PLAY_STORE_PASSWORD }}' > /dev/null 2>&1; then
+              echo PLAY_STORE_FILE='${{ github.workspace }}/play.jks' >> gradle.properties
+              echo PLAY_STORE_PASSWORD='${{ secrets.PLAY_STORE_PASSWORD }}' >> gradle.properties
+              echo PLAY_KEY_ALIAS='${{ secrets.PLAY_KEY_ALIAS }}' >> gradle.properties
+              echo PLAY_KEY_PASSWORD='${{ secrets.PLAY_KEY_PASSWORD }}' >> gradle.properties
+            else
+              echo "PLAY keystore is invalid or missing; Play release will use the GKD signing config fallback."
+              rm -f ${{ github.workspace }}/play.jks
+            fi
           else
             echo "PLAY_STORE_FILE_BASE64 is not set; Play release will use the GKD signing config fallback."
           fi
