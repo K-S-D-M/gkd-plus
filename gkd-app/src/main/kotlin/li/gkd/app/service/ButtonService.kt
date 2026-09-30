@@ -8,6 +8,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import li.gkd.app.text.UiStrings
@@ -15,6 +16,7 @@ import li.gkd.app.notif.NotificationCatalog
 import li.gkd.app.permission.PermissionStates
 import li.gkd.app.snapshot.SnapshotCapture
 import li.gkd.app.ui.share.launchUi
+import li.gkd.app.util.AiRuleGenerator
 import li.gkd.app.util.IntentUtils
 import li.gkd.app.ui.component.GkIcon
 import li.gkd.app.ui.component.GkIcons
@@ -22,11 +24,29 @@ import li.gkd.app.ui.component.GkIcons
 class ButtonService : OverlayWindowService(
     positionKey = "button"
 ) {
+    private var lastClickTime = 0L
+
     override fun onClickView() {
         if (isOverlayContentHidden) return
         lifecycleScope.launchUi {
-            withAllOverlaysHidden {
-                SnapshotCapture.capture()
+            val now = System.currentTimeMillis()
+            val gap = now - lastClickTime
+            lastClickTime = now
+            if (gap < 400) {
+                // 双击 → 加强模式
+                lastClickTime = 0L
+                withAllOverlaysHidden {
+                    AiRuleGenerator.enhancedGenerate()
+                }
+            } else {
+                // 等待判断是否双击
+                delay(400)
+                if (lastClickTime == now) {
+                    // 未被后续点击覆盖，执行单击
+                    withAllOverlaysHidden {
+                        SnapshotCapture.capture()
+                    }
+                }
             }
         }
     }

@@ -31,6 +31,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import li.gkd.app.META
 import li.gkd.app.app
@@ -40,11 +41,33 @@ import li.gkd.app.ui.component.GkAlertDialog
 import li.songe.codeorigin.CallSite
 import java.io.File
 import java.net.URI
+import java.text.SimpleDateFormat
+import java.util.Locale
+import java.util.TimeZone
 import kotlin.time.Duration.Companion.days
 
 
 private val UPDATE_URL: String
     get() = UpdateChannelOption.objects.findOption(storeFlow.value.updateChannel).url
+
+@Serializable
+data class GitHubReleaseAsset(
+    val name: String,
+    val size: Long,
+    @SerialName("browser_download_url")
+    val browserDownloadUrl: String,
+)
+
+@Serializable
+data class GitHubRelease(
+    @SerialName("tag_name")
+    val tagName: String,
+    val name: String? = null,
+    val body: String? = null,
+    @SerialName("published_at")
+    val publishedAt: String? = null,
+    val assets: List<GitHubReleaseAsset> = emptyList(),
+)
 
 @Serializable
 data class NewVersion(
@@ -53,7 +76,11 @@ data class NewVersion(
     val downloadUrl: String,
     val fileSize: Long,
     val versionLogs: List<VersionLog> = emptyList(),
-)
+) {
+    val absoluteDownloadUrl: String
+        get() = downloadUrl.takeIf { it.startsWith("http://") || it.startsWith("https://") }
+            ?: URI(UPDATE_URL).resolve(downloadUrl).toString()
+}
 
 @Serializable
 data class VersionLog(
@@ -61,6 +88,44 @@ data class VersionLog(
     val code: Int,
     val desc: String,
 )
+
+private fun String.parseVersionCode(): Int {
+    val match = Regex("""v?(\d+)\.(\d+)\.(\d+)""").find(this) ?: return 0
+    val (major, minor, patch) = match.destructured
+    return major.toInt() * 10000 + minor.toInt() * 100 + patch.toInt()
+}
+
+private fun String.parseGitHubTime(): Long? {
+    return runCatching {
+        SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).apply {
+            timeZone = TimeZone.getTimeZone("UTC")
+        }.parse(this)?.time
+    }.getOrNull()
+}
+
+private fun GitHubRelease.isNewerThanCurrent(): Boolean {
+    if (tagName == META.tagName) return false
+    return (publishedAt?.parseGitHubTime() ?: 0L) > META.commitTime
+}
+
+private fun GitHubRelease.toNewVersion(): NewVersion {
+    val apkAsset = assets.firstOrNull { asset ->
+        asset.name.endsWith(".apk", ignoreCase = true)
+    } ?: error("未找到 APK 下载文件")
+    return NewVersion(
+        versionCode = tagName.parseVersionCode(),
+        versionName = tagName.removePrefix("v"),
+        downloadUrl = apkAsset.browserDownloadUrl,
+        fileSize = apkAsset.size,
+        versionLogs = listOf(
+            VersionLog(
+                name = tagName.removePrefix("v"),
+                code = tagName.parseVersionCode(),
+                desc = body.orEmpty(),
+            )
+        ),
+    )
+}
 
 private var lastCheckTime = 0L
 
@@ -95,10 +160,20 @@ class UpdateStatus(val scope: CoroutineScope) {
                     if (!NetworkUtils.isAvailable()) {
                         error(UiStrings.network_unavailable)
                     }
-                    val newVersion = client.get(UPDATE_URL).body<NewVersion>()
-                    if (newVersion.versionCode <= META.versionCode) {
-                        if (manual) toast(UiStrings.updates_none, loc = loc)
-                        return@tryWithStateLock
+                    val newVersion = if (UPDATE_URL.contains("api.github.com/repos/fjjzy/gkd-plus/releases")) {
+                        val release = client.get(UPDATE_URL).body<GitHubRelease>()
+                        if (!release.isNewerThanCurrent()) {
+                            if (manual) toast(UiStrings.updates_none, loc = loc)
+                            return@tryWithStateLock
+                        }
+                        release.toNewVersion()
+                    } else {
+                        client.get(UPDATE_URL).body<NewVersion>().also { version ->
+                            if (version.versionCode <= META.versionCode) {
+                                if (manual) toast(UiStrings.updates_none, loc = loc)
+                                return@tryWithStateLock
+                            }
+                        }
                     }
                     if (
                         !manual &&
@@ -128,7 +203,7 @@ class UpdateStatus(val scope: CoroutineScope) {
         downloadJob = scope.launch(Dispatchers.IO) {
             try {
                 val channel =
-                    client.get(URI(UPDATE_URL).resolve(newVersion.downloadUrl).toString()) {
+                    client.get(newVersion.absoluteDownloadUrl) {
                         onDownload { bytesSentTotal, _ ->
                             val downloadStatus = downloadStatusFlow.value
                             if (downloadStatus is LoadStatus.Loading) {

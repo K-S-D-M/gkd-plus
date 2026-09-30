@@ -18,6 +18,7 @@ import kotlinx.coroutines.withContext
 import li.gkd.app.text.UiStrings
 import li.gkd.app.a11y.A11yRuntime
 import li.gkd.app.a11y.currentTopActivity
+import li.gkd.app.appScope
 import li.gkd.app.data.ComplexSnapshot
 import li.gkd.app.data.RpcError
 import li.gkd.app.data.info2nodeList
@@ -26,6 +27,7 @@ import li.gkd.app.priv.privilegeContextFlow
 import li.gkd.app.service.ScreenshotService
 import li.gkd.app.data.snapshot.SnapshotRepository
 import li.gkd.app.store.AppStore.storeFlow
+import li.gkd.app.util.AiRuleGenerator
 import li.gkd.app.util.AndroidTarget
 import li.gkd.app.util.AutomatorModeOption
 import li.gkd.app.util.BarUtils
@@ -34,6 +36,7 @@ import li.gkd.app.util.LogUtils
 import li.gkd.app.util.ScreenUtils
 import li.gkd.app.util.SystemDownloads
 import li.gkd.app.util.getShowActivityId
+import li.gkd.app.util.launchLogged
 import li.gkd.app.util.px
 import li.gkd.app.util.ToastUtils.toast
 import kotlin.math.min
@@ -311,6 +314,11 @@ object SnapshotCapture {
                 UiStrings.snapshot_saved_warning(statusDetail)
             }
             toast(toastText, forced = true)
+            if (storeFlow.value.aiEnable) {
+                appScope.launchLogged {
+                    AiRuleGenerator.generateRule(snapshot.id)
+                }
+            }
             return snapshot
         } finally {
             captureMutex.unlock()

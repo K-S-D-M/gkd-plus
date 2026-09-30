@@ -110,13 +110,13 @@ sealed class UpdateChannelOption(
     data object Stable : UpdateChannelOption(
         0,
         UiStrings.update_channel_stable,
-        "https://registry.npmmirror.com/@gkd-kit/app/latest/files/index.json"
+        "https://api.github.com/repos/fjjzy/gkd-plus/releases/latest"
     )
 
     data object Beta : UpdateChannelOption(
         1,
         UiStrings.update_channel_beta,
-        "https://registry.npmmirror.com/@gkd-kit/app-beta/latest/files/index.json"
+        "https://api.github.com/repos/fjjzy/gkd-plus/releases/latest"
     )
 
     companion object {

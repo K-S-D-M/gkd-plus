@@ -82,6 +82,7 @@ private fun AdvancedContent() {
     val scope = vm.scope
     var showEditPortDialog by rememberSaveable { mutableStateOf(false) }
     var showHttpSettingsDialog by rememberSaveable { mutableStateOf(false) }
+    var showAiConfigDialog by rememberSaveable { mutableStateOf(false) }
     val store by storeFlow.collectAsStateWithLifecycle()
     val httpServer by HttpService.httpServerFlow.collectAsStateWithLifecycle()
     val localNetworkIps by HttpService.localNetworkIpsFlow.collectAsStateWithLifecycle()
@@ -122,6 +123,13 @@ private fun AdvancedContent() {
                     showEditPortDialog = false
                 }
             },
+        )
+    }
+
+    if (showAiConfigDialog) {
+        AiSettingsDialog(
+            aiConfig = store.aiConfig,
+            onDismissRequest = { showAiConfigDialog = false },
         )
     }
 
@@ -172,6 +180,20 @@ private fun AdvancedContent() {
                 title = UiStrings.snapshot_settings,
                 subtitle = UiStrings.snapshot_settings_description,
                 onClick = { mainVm.navigatePage(SnapshotSettingsRoute) },
+            )
+
+            AdvancedSectionTitle("AI 自动规则")
+            GkTextSwitch(
+                title = "启用 AI 规则",
+                subtitle = "捕获快照后自动调用大模型生成订阅规则",
+                checked = store.aiEnable,
+                onCheckedChange = vm::setAiEnable,
+            )
+            GkSettingItem(
+                title = "AI 规则设置",
+                subtitle = "配置大模型协议、API 地址、模型等参数",
+                imageVector = GkIcons.Edit,
+                onClick = { showAiConfigDialog = true },
             )
 
             AdvancedSectionTitle(UiStrings.advanced_live_debug)

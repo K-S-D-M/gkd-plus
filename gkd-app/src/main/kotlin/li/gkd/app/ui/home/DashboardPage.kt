@@ -28,8 +28,12 @@ import li.gkd.app.ui.component.GkTooltipIconButtonBox
 import li.gkd.app.ui.icon.GkAnimatedRocketIcon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -75,6 +79,7 @@ import li.gkd.db.RuleGroupType
 import li.gkd.app.ui.component.GkGroupNameText
 import li.gkd.app.ui.component.GkIcon
 import li.gkd.app.ui.component.GkIcons
+import li.gkd.app.ui.component.GkAlertDialog
 import li.gkd.app.ui.component.GkSwitch
 import li.gkd.app.ui.component.GkTopAppBar
 import li.gkd.app.ui.component.rememberColumnScrollState
@@ -271,8 +276,58 @@ fun useDashboardPage(): ScaffoldExt {
                 onClick = {
                     mainVm.navigatePage(WebViewRoute(initUrl = HOME_PAGE_URL))
                 })
+
+            var showManualUpdateDialog by remember { mutableStateOf(false) }
+            PageItemCard(
+                title = "手动更新 APP",
+                subtitle = "无加速器从此处手动更新最新版",
+                imageVector = GkIcons.Autorenew,
+                onClickLabel = "打开手动更新下载弹窗",
+                onClick = {
+                    showManualUpdateDialog = true
+                })
+            ManualUpdateDialog(
+                visible = showManualUpdateDialog,
+                onDismissRequest = { showManualUpdateDialog = false },
+                onOpenUrl = mainVm::openUrl,
+            )
             GkPageBottomSpace()
         }
+    }
+}
+
+
+private const val QUARK_MANUAL_UPDATE_URL = "https://pan.quark.cn/s/62672aa3402a"
+private const val BAIDU_MANUAL_UPDATE_URL = "https://pan.baidu.com/s/1msaC8BsFKcZUOYKVpI43dQ?pwd=417a"
+
+@Composable
+private fun ManualUpdateDialog(
+    visible: Boolean,
+    onDismissRequest: () -> Unit,
+    onOpenUrl: (String) -> Unit,
+) {
+    if (visible) {
+        GkAlertDialog(
+            onDismissRequest = onDismissRequest,
+            title = { Text(text = "手动更新 APP") },
+            text = { Text(text = "无加速器从此处手动更新最新版") },
+            confirmButton = {
+                TextButton(onClick = throttle {
+                    onDismissRequest()
+                    onOpenUrl(QUARK_MANUAL_UPDATE_URL)
+                }) {
+                    Text(text = "夸克网盘")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = throttle {
+                    onDismissRequest()
+                    onOpenUrl(BAIDU_MANUAL_UPDATE_URL)
+                }) {
+                    Text(text = "百度网盘")
+                }
+            },
+        )
     }
 }
 

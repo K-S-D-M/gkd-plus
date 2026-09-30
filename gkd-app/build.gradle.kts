@@ -27,9 +27,9 @@ plugins {
 android {
     namespace = "li.gkd.app"
     defaultConfig {
-        applicationId = "li.songe.gkd"
-        versionCode = 92
-        versionName = "1.12.1"
+        applicationId = "li.songe.gkd.plus"
+        versionCode = 93
+        versionName = "1.12.1-plus.7"
 
         vectorDrawables {
             useSupportLibrary = true
@@ -196,7 +196,7 @@ if (buildProperty("GKD_RENAME_APK_FLAG").isPresent) {
     androidComponents.onVariants { variant ->
         variant.outputs.onEach { output ->
             output as VariantOutputImpl
-            output.outputFileName = "gkd-v${output.versionName.get()}.apk"
+            output.outputFileName = "gkd-plus-v${output.versionName.get()}.apk"
         }
     }
 }

@@ -93,7 +93,7 @@ data class AppMeta(
     val appId: String = app.packageName!!,
     val appName: String = app.getString(R.string.app_name)
 ) {
-    val commitUrl = "https://github.com/fjjzy/gkd/".run {
+    val commitUrl = "https://github.com/fjjzy/gkd-plus/".run {
         plus(if (tagName != null) "tree/$tagName" else "commit/$commitId")
     }
     val isGkdChannel get() = channel == "gkd"
