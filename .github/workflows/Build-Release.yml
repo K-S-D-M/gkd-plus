@@ -7,122 +7,67 @@ on:
 
 jobs:
   build:
+    permissions:
+      contents: write
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-java@v5
+      - uses: actions/setup-java@v6
         with:
-          distribution: 'zulu'
+          distribution: 'temurin'
           java-version: '21'
 
-      - uses: gradle/actions/setup-gradle@v5
+      - uses: gradle/actions/setup-gradle@v6
         with:
           cache-encryption-key: ${{ secrets.GRADLE_CACHE_ENCRYPTION_KEY }}
 
-      - name: write gkd secrets info
-        run: |
-          if [ -n "${{ secrets.GKD_STORE_FILE_BASE64 }}" ]; then
-            printf '%s' '${{ secrets.GKD_STORE_FILE_BASE64 }}' | base64 --decode > ${{ github.workspace }}/gkd.jks
-            if ! keytool -list -keystore ${{ github.workspace }}/gkd.jks -storepass '${{ secrets.GKD_STORE_PASSWORD }}' -alias '${{ secrets.GKD_KEY_ALIAS }}' -keypass '${{ secrets.GKD_KEY_PASSWORD }}' > /dev/null 2>&1; then
-              echo "GKD keystore is invalid, falling back to debug signing"
-              rm -f ${{ github.workspace }}/gkd.jks
-            else
-              echo GKD_STORE_FILE='${{ github.workspace }}/gkd.jks' >> gradle.properties
-              echo GKD_STORE_PASSWORD='${{ secrets.GKD_STORE_PASSWORD }}' >> gradle.properties
-              echo GKD_KEY_ALIAS='${{ secrets.GKD_KEY_ALIAS }}' >> gradle.properties
-              echo GKD_KEY_PASSWORD='${{ secrets.GKD_KEY_PASSWORD }}' >> gradle.properties
-            fi
-          else
-            echo "GKD_STORE_FILE_BASE64 is not set; release will use debug signing."
-          fi
+      - name: write gkd keystore
+        run: echo ${{ secrets.GKD_STORE_FILE_BASE64 }} | base64 --decode > ${{ github.workspace }}/gkd.jks
 
-      - name: write play secrets info
-        run: |
-          if [ -n "${{ secrets.PLAY_STORE_FILE_BASE64 }}" ]; then
-            printf '%s' '${{ secrets.PLAY_STORE_FILE_BASE64 }}' | base64 --decode > ${{ github.workspace }}/play.jks
-            if keytool -list -keystore ${{ github.workspace }}/play.jks -storepass '${{ secrets.PLAY_STORE_PASSWORD }}' > /dev/null 2>&1; then
-              echo PLAY_STORE_FILE='${{ github.workspace }}/play.jks' >> gradle.properties
-              echo PLAY_STORE_PASSWORD='${{ secrets.PLAY_STORE_PASSWORD }}' >> gradle.properties
-              echo PLAY_KEY_ALIAS='${{ secrets.PLAY_KEY_ALIAS }}' >> gradle.properties
-              echo PLAY_KEY_PASSWORD='${{ secrets.PLAY_KEY_PASSWORD }}' >> gradle.properties
-            else
-              echo "PLAY keystore is invalid or missing; Play release will use the GKD signing config fallback."
-              rm -f ${{ github.workspace }}/play.jks
-            fi
-          else
-            echo "PLAY_STORE_FILE_BASE64 is not set; Play release will use the GKD signing config fallback."
-          fi
+      - name: write play keystore
+        run: echo ${{ secrets.PLAY_STORE_FILE_BASE64 }} | base64 --decode > ${{ github.workspace }}/play.jks
 
-      - run: chmod 777 ./gradlew
-      - run: ./gradlew app:assembleGkdRelease app:bundlePlayRelease
+      - run: ./gradlew :gkd-app:assembleGkdRelease :gkd-app:bundlePlayRelease
+        env:
+          GKD_GITHUB_COOKIE: ${{ secrets.GKD_GITHUB_COOKIE }}
+          GKD_API_AUTH_TOKEN: ${{ secrets.GKD_API_AUTH_TOKEN }}
+          GKD_STORE_FILE: ${{ github.workspace }}/gkd.jks
+          GKD_STORE_PASSWORD: ${{ secrets.GKD_STORE_PASSWORD }}
+          GKD_KEY_ALIAS: ${{ secrets.GKD_KEY_ALIAS }}
+          GKD_KEY_PASSWORD: ${{ secrets.GKD_KEY_PASSWORD }}
+          PLAY_STORE_FILE: ${{ github.workspace }}/play.jks
+          PLAY_STORE_PASSWORD: ${{ secrets.PLAY_STORE_PASSWORD }}
+          PLAY_KEY_ALIAS: ${{ secrets.PLAY_KEY_ALIAS }}
+          PLAY_KEY_PASSWORD: ${{ secrets.PLAY_KEY_PASSWORD }}
 
       - uses: actions/upload-artifact@v7
         with:
           name: release
-          path: app/build/outputs/apk/gkd/release
+          path: gkd-app/build/outputs/apk/gkd/release
 
       - uses: actions/upload-artifact@v7
         with:
           name: playRelease
-          path: app/build/outputs/bundle/playRelease
+          path: gkd-app/build/outputs/bundle/playRelease
 
       - uses: actions/upload-artifact@v7
         with:
           name: outputs
-          path: app/build/outputs
+          path: gkd-app/build/outputs
 
-      - uses: actions/upload-artifact@v7
-        with:
-          name: CHANGELOG.md
-          path: CHANGELOG.md
+      - run: |
+          cp outputs/apk/gkd/release/app-gkd-release.apk "${GITHUB_WORKSPACE}/gkd-${GITHUB_REF_NAME}.apk"
+          zip -r "${GITHUB_WORKSPACE}/outputs-${GITHUB_REF_NAME}.zip" outputs
+        working-directory: gkd-app/build
 
-  release:
-    needs: build
-    permissions: write-all
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/download-artifact@v8
-        with:
-          name: outputs
-          path: outputs
-
-      - uses: actions/download-artifact@v8
-        with:
-          name: release
-          path: release
-
-      - uses: actions/download-artifact@v8
-        with:
-          name: CHANGELOG.md
-
-      - run: ls -R
-
-      - id: create_release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ github.ref_name }}
-          release_name: Release ${{ github.ref_name }}
+          name: Release ${{ github.ref_name }}
           body_path: ./CHANGELOG.md
           prerelease: ${{ contains(github.ref_name, 'beta') }}
-
-      - uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: release/app-gkd-release.apk
-          asset_name: gkd-${{ github.ref_name }}.apk
-          asset_content_type: application/vnd.android.package-archive
-
-      - run: zip -r outputs.zip outputs
-      - uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: outputs.zip
-          asset_name: outputs-${{ github.ref_name }}.zip
-          asset_content_type: application/zip
+          fail_on_unmatched_files: true
+          files: |
+            gkd-*.apk
+            outputs-*.zip
