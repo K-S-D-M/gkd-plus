@@ -56,6 +56,7 @@ fun GkSnapshotActionsSheet(
     onSaveToAlbum: () -> Unit,
     onReplace: () -> Unit,
     onDelete: () -> Unit,
+    onWebReview: () -> Unit,
 ) {
     fun perform(action: () -> Unit) {
         onDismissRequest()
@@ -90,6 +91,12 @@ fun GkSnapshotActionsSheet(
                 icon = GkIcons.Share,
                 title = UiStrings.action_share,
                 onClick = { perform(onShare) },
+            )
+            SnapshotActionRow(
+                icon = GkIcons.OpenInNew,
+                title = "网页审核 Web Review",
+                subtitle = "在内嵌网页中审查快照并生成选择器",
+                onClick = { perform(onWebReview) },
             )
             SnapshotActionRow(
                 icon = GkIcons.ArrowDownward,
