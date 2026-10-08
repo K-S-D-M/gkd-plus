@@ -36,7 +36,6 @@ import li.gkd.app.ui.component.GkCheckbox
 import li.gkd.app.ui.component.GkIcons
 import li.gkd.app.ui.component.GkSizedIconButton
 import li.gkd.app.ui.component.GkTextSwitch
-import li.gkd.app.ui.component.defaultIconTint
 import li.gkd.app.util.AiRuleGenerator
 import li.gkd.app.util.TimeUtils.throttle
 import li.gkd.app.util.ToastUtils.toast
@@ -363,7 +362,7 @@ private fun ModelRow(
                 onClick = throttle(fn = onSetCurrent),
                 imageVector = GkIcons.Check,
                 contentDescription = "设为当前",
-                tint = if (isCurrent) MaterialTheme.colorScheme.primary else defaultIconTint(),
+                tint = if (isCurrent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }
