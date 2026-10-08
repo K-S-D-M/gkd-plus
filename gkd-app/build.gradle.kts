@@ -27,7 +27,7 @@ plugins {
 android {
     namespace = "li.gkd.app"
     defaultConfig {
-        applicationId = "li.songe.gkd.plus"
+        applicationId = "li.songe.gkd.custom"
         versionCode = 93
         versionName = "1.12.1-plus.7"
 
