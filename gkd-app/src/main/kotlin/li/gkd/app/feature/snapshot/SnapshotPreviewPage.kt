@@ -169,6 +169,7 @@ fun SnapshotPreviewPage(route: SnapshotPreviewRoute) {
                     onSaveToAlbum = { actions.saveToAlbum(snapshot) },
                     onReplace = { actions.replace(snapshot) },
                     onDelete = { actions.delete(snapshot) },
+                    onWebReview = { mainVm.navigatePage(SnapshotWebReviewRoute(snapshot.id)) },
                 )
             }
         } else {
