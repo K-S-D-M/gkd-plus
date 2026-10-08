@@ -39,6 +39,8 @@ import li.gkd.app.ui.component.GkIcons
 import li.gkd.app.ui.component.GkRetainedSheet
 import li.gkd.app.ui.component.SheetRequest
 import li.gkd.app.util.getShowActivityId
+import li.gkd.app.util.AiRuleGenerator
+import kotlinx.coroutines.launch
 
 @Serializable
 data class SnapshotPreviewRoute(
@@ -170,6 +172,11 @@ fun SnapshotPreviewPage(route: SnapshotPreviewRoute) {
                     onReplace = { actions.replace(snapshot) },
                     onDelete = { actions.delete(snapshot) },
                     onWebReview = { mainVm.navigatePage(SnapshotWebReviewRoute(snapshot.id)) },
+                    onAiGenerate = {
+                        mainVm.viewModelScope.launch {
+                            AiRuleGenerator.generateRule(snapshot.id)
+                        }
+                    },
                 )
             }
         } else {

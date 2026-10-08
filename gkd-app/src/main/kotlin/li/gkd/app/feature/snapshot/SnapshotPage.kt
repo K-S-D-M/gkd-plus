@@ -106,6 +106,7 @@ import li.gkd.app.util.format
 import li.gkd.app.util.getShowActivityId
 import li.gkd.app.util.ToastUtils.toast
 import li.gkd.db.Snapshot
+import li.gkd.app.util.AiRuleGenerator
 
 @Serializable
 data object SnapshotPageRoute : NavKey
@@ -450,6 +451,11 @@ fun SnapshotPage() {
             onReplace = { actions.replace(snapshot) },
             onDelete = { actions.delete(snapshot) },
             onWebReview = { mainVm.navigatePage(SnapshotWebReviewRoute(snapshot.id)) },
+            onAiGenerate = {
+                mainVm.viewModelScope.launch {
+                    AiRuleGenerator.generateRule(snapshot.id)
+                }
+            },
         )
     }
 }

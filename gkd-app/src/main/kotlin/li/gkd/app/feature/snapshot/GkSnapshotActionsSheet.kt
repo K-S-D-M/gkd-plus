@@ -57,6 +57,7 @@ fun GkSnapshotActionsSheet(
     onReplace: () -> Unit,
     onDelete: () -> Unit,
     onWebReview: () -> Unit,
+    onAiGenerate: () -> Unit,
 ) {
     fun perform(action: () -> Unit) {
         onDismissRequest()
@@ -97,6 +98,12 @@ fun GkSnapshotActionsSheet(
                 title = "网页审核 Web Review",
                 subtitle = "在内嵌网页中审查快照并生成选择器",
                 onClick = { perform(onWebReview) },
+            )
+            SnapshotActionRow(
+                icon = GkIcons.FlashOn,
+                title = "AI 生成规则",
+                subtitle = "调用 AI 分析快照并生成规则到本地订阅",
+                onClick = { perform(onAiGenerate) },
             )
             SnapshotActionRow(
                 icon = GkIcons.ArrowDownward,
