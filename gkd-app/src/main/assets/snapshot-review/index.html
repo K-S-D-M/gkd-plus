@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>快照审查 Snapshot Review</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:system-ui,-apple-system,sans-serif;background:#1a1a1a;color:#e0e0e0;font-size:14px;overflow:hidden;height:100vh;display:flex;flex-direction:column}
+.header{background:#2d2d2d;padding:10px 12px;border-bottom:1px solid #444;flex-shrink:0}
+.header h1{font-size:16px;font-weight:600}
+.header .sub{font-size:12px;color:#999;margin-top:2px}
+.main{flex:1;display:flex;overflow:hidden;position:relative}
+.viewer{flex:1;position:relative;overflow:auto;background:#000;display:flex;align-items:flex-start;justify-content:center}
+.viewer img{max-width:100%;height:auto;display:block}
+#overlay{position:absolute;top:0;left:0;pointer-events:none}
+.node-box{position:absolute;border:1.5px solid rgba(0,150,255,.7);background:rgba(0,150,255,.08);pointer-events:auto;cursor:pointer}
+.node-box.selected{border-color:#ff4444;background:rgba(255,68,68,.15);border-width:2.5px}
+.node-box:hover{border-color:#ffcc00}
+.panel{width:320px;max-width:45%;background:#2d2d2d;border-left:1px solid #444;overflow-y:auto;flex-shrink:0;display:flex;flex-direction:column}
+.search{padding:10px;border-bottom:1px solid #444;flex-shrink:0}
+.search input{width:100%;padding:8px;border:1px solid #555;border-radius:6px;background:#1a1a1a;color:#e0e0e0;font-size:13px}
+.node-list{flex:1;overflow-y:auto}
+.node-item{padding:8px 10px;border-bottom:1px solid #3a3a3a;cursor:pointer;font-size:12px}
+.node-item:hover{background:#3a3a3a}
+.node-item.selected{background:#1a3a5a;border-left:3px solid #0096ff}
+.node-item .t{color:#fff;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.node-item .d{color:#888;font-size:11px;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.detail{border-top:1px solid #444;padding:10px;flex-shrink:0;max-height:45%;overflow-y:auto;background:#252525}
+.detail h3{font-size:13px;margin-bottom:8px;color:#0096ff}
+.sel-block{margin-bottom:10px;border:1px solid #444;border-radius:6px;overflow:hidden}
+.sel-head{padding:8px 10px;background:#333;cursor:pointer;font-size:12px;font-weight:600;display:flex;justify-content:space-between;align-items:center}
+.sel-body{padding:8px 10px;display:none;font-family:monospace;font-size:12px;word-break:break-all;background:#1e1e1e}
+.sel-block.open .sel-body{display:block}
+.sel-body .zh{color:#7ecfff;margin-bottom:4px}
+.sel-body .en{color:#a0a0a0;font-size:11px;margin-bottom:8px}
+.sel-body code{display:block;background:#111;padding:6px 8px;border-radius:4px;margin:4px 0;color:#ffd700;cursor:pointer}
+.sel-body code:active{background:#333}
+.copy-hint{font-size:11px;color:#666;text-align:center;padding:4px}
+.loading{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:#1a1a1a;z-index:10}
+.loading .spin{width:40px;height:40px;border:4px solid #333;border-top-color:#0096ff;border-radius:50%;animation:sp 1s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+.error{padding:20px;text-align:center;color:#ff6666}
+@media(max-width:700px){.panel{width:260px}}
+</style>
+</head>
+<body>
+<div class="header">
+<h1>快照审查 <span style="font-weight:400;font-size:13px;color:#999">Snapshot Review</span></h1>
+<div class="sub">点击截图上的节点或右侧列表生成选择器 · Tap a node to generate selectors</div>
+</div>
+<div class="main">
+<div class="viewer" id="viewer">
+<div class="loading" id="loading"><div class="spin"></div></div>
+<img id="shot" style="display:none" alt="screenshot">
+<div id="overlay"></div>
+</div>
+<div class="panel">
+<div class="search"><input id="q" placeholder="搜索文本 / id / desc · Search text / id / desc"></div>
+<div class="node-list" id="nodelist"></div>
+<div class="detail" id="detail" style="display:none">
+<h3>选择器 · Selectors</h3>
+<div id="sels"></div>
+<div class="copy-hint">点击选择器复制 · Tap selector to copy</div>
+</div>
+</div>
+</div>
+<script>
+let nodes=[], screenW=0, screenH=0, selected=null;
+const $=id=>document.getElementById(id);
+
+function esc(s){return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
+
+function init(data){
+  try{
+    const snap=typeof data==='string'?JSON.parse(data):data;
+    nodes=snap.nodes||[];
+    screenW=snap.screenWidth||0; screenH=snap.screenHeight||0;
+    renderList(''); $('loading').style.display='none';
+    if(window.GkdBridge&&GkdBridge.getScreenshot){
+      const b64=GkdBridge.getScreenshot();
+      if(b64){$('shot').src='data:image/png;base64,'+b64;$('shot').style.display='block';layoutOverlay();}
+    }
+  }catch(e){$('loading').innerHTML='<div class="error">解析快照失败<br>Failed to parse snapshot<br>'+esc(e.message)+'</div>'}
+}
+
+function layoutOverlay(){
+  const img=$('shot'),ov=$('overlay'),vw=$('viewer');
+  if(!img.naturalWidth)return;
+  const r=img.getBoundingClientRect(),vr=vw.getBoundingClientRect();
+  const sx=r.width/screenW, sy=r.height/screenH;
+  ov.style.left=(r.left-vr.left+vw.scrollLeft)+'px';
+  ov.style.top=(r.top-vr.top+vw.scrollTop)+'px';
+  ov.style.width=r.width+'px'; ov.style.height=r.height+'px';
+  ov.innerHTML='';
+  nodes.forEach(n=>{
+    const a=n.attr||{};
+    if(a.width<4||a.height<4)return;
+    const d=document.createElement('div');
+    d.className='node-box'+(selected===n.id?' selected':'');
+    d.style.left=(a.left*sx)+'px';d.style.top=(a.top*sy)+'px';
+    d.style.width=(a.width*sx)+'px';d.style.height=(a.height*sy)+'px';
+    d.onclick=e=>{e.stopPropagation();selectNode(n.id)};
+    ov.appendChild(d);
+  });
+}
+
+function nodeLabel(n){
+  const a=n.attr||{};
+  return a.text||a.desc||a.vid||a.id||a.name||('node#'+n.id);
+}
+
+function renderList(filter){
+  const list=$('nodelist');list.innerHTML='';
+  const f=(filter||'').toLowerCase();
+  let count=0;
+  nodes.forEach(n=>{
+    const a=n.attr||{};
+    const hay=((a.text||'')+' '+(a.desc||'')+' '+(a.id||'')+' '+(a.vid||'')).toLowerCase();
+    if(f&&!hay.includes(f))return;
+    if(count++>300)return;
+    const d=document.createElement('div');
+    d.className='node-item'+(selected===n.id?' selected':'');
+    d.innerHTML='<div class="t">'+esc(nodeLabel(n))+'</div><div class="d">'+esc(a.name||'')+(a.clickable?' ·可点击':'')+'</div>';
+    d.onclick=()=>selectNode(n.id);
+    list.appendChild(d);
+  });
+  if(count===0)list.innerHTML='<div style="padding:20px;text-align:center;color:#666">无匹配节点<br>No matching nodes</div>';
+}
+
+function genSelectors(n){
+  const a=n.attr||{},out=[];
+  if(a.id)out.push({zh:'完整ID',en:'Full ID',sel:'[id="'+a.id+'"]'});
+  if(a.vid)out.push({zh:'简化ID',en:'Short ID',sel:'[vid="'+a.vid+'"]'});
+  if(a.text)out.push({zh:'文本',en:'Text',sel:'[text="'+a.text+'"]'});
+  if(a.desc)out.push({zh:'描述',en:'Description',sel:'[desc="'+a.desc+'"]'});
+  if(a.text)out.push({zh:'文本包含',en:'Text contains',sel:'[text*="'+a.text+'"]'});
+  return out;
+}
+
+function selectNode(id){
+  selected=id;
+  const n=nodes.find(x=>x.id===id);
+  if(!n)return;
+  document.querySelectorAll('.node-box').forEach(b=>b.classList.remove('selected'));
+  layoutOverlay();
+  renderList($('q').value);
+  const sels=genSelectors(n),box=$('sels');box.innerHTML='';
+  $('detail').style.display='block';
+  if(!sels.length)box.innerHTML='<div style="color:#666;font-size:12px">该节点无可用属性<br>No usable attributes</div>';
+  sels.forEach(s=>{
+    const d=document.createElement('div');d.className='sel-block open';
+    d.innerHTML='<div class="sel-head"><span>'+esc(s.zh)+' · '+esc(s.en)+'</span><span>▼</span></div><div class="sel-body"><code>'+esc(s.sel)+'</code></div>';
+    d.querySelector('.sel-head').onclick=()=>d.classList.toggle('open');
+    d.querySelector('code').onclick=()=>{
+      const t=s.sel;
+      if(window.GkdBridge&&GkdBridge.copyText){GkdBridge.copyText(t)}
+      else if(navigator.clipboard){navigator.clipboard.writeText(t)}
+      if(window.GkdBridge&&GkdBridge.toast){GkdBridge.toast('已复制 Copied')}
+    };
+    box.appendChild(d);
+  });
+}
+
+$('q').addEventListener('input',e=>renderList(e.target.value));
+window.addEventListener('resize',layoutOverlay);
+$('viewer').addEventListener('scroll',()=>{},{passive:true});
+
+// App 通过 loadSnapshot(json) 注入数据
+window.loadSnapshot=function(json){init(json)};
+// 如果 Bridge 已就绪且有预加载数据
+if(window.GkdBridge&&GkdBridge.getSnapshotJson){
+  try{init(GkdBridge.getSnapshotJson())}catch(e){}
+}
+</script>
+</body>
+</html>
