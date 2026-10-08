@@ -4,8 +4,10 @@ import android.annotation.SuppressLint
 import android.util.Base64
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -16,6 +18,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.navigation3.runtime.NavKey
 import com.kevinnzou.web.AccompanistWebViewClient
@@ -25,15 +28,22 @@ import com.kevinnzou.web.rememberWebViewState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
+import li.gkd.app.app
 import li.gkd.app.data.snapshot.SnapshotRepository
+import li.gkd.app.util.LogUtils
 import li.gkd.app.util.ToastUtils
 import org.json.JSONObject
 import java.io.File
+import java.net.URL
+import java.util.zip.ZipInputStream
 
 @Serializable
 data class SnapshotWebReviewRoute(
     val snapshotId: Long,
 ) : NavKey
+
+/** 官方 inspect 工具 ZIP 包地址（GitHub Pages） */
+private const val INSPECT_ZIP_URL = "https://k-s-d-m.github.io/gkd-subscription-public/inspect-dist.zip"
 
 @OptIn(ExperimentalMaterial3Api::class)
 @SuppressLint("SetJavaScriptEnabled", "AddJavascriptInterface")
@@ -42,8 +52,31 @@ fun SnapshotWebReviewPage(route: SnapshotWebReviewRoute) {
     var webView by remember { mutableStateOf<WebView?>(null) }
     var snapshotJson by remember { mutableStateOf<String?>(null) }
     var screenshotBase64 by remember { mutableStateOf<String?>(null) }
+    var inspectUrl by remember { mutableStateOf<String?>(null) }
+    var loadingInspect by remember { mutableStateOf(true) }
+    var inspectError by remember { mutableStateOf<String?>(null) }
 
-    // Load snapshot data
+    // 1. 准备官方 inspect 工具（下载 ZIP 并解压）
+    LaunchedEffect(Unit) {
+        try {
+            val inspectDir = withContext(Dispatchers.IO) {
+                prepareInspectTool()
+            }
+            val indexFile = File(inspectDir, "index.html")
+            if (indexFile.exists()) {
+                inspectUrl = "file://${indexFile.absolutePath}"
+            } else {
+                inspectError = "inspect 工具文件缺失"
+            }
+        } catch (e: Exception) {
+            LogUtils.d(e)
+            inspectError = "加载 inspect 失败：${e.message}"
+        } finally {
+            loadingInspect = false
+        }
+    }
+
+    // 2. 加载快照数据
     LaunchedEffect(route.snapshotId) {
         try {
             val json = withContext(Dispatchers.IO) {
@@ -82,26 +115,55 @@ fun SnapshotWebReviewPage(route: SnapshotWebReviewRoute) {
         }
     }
 
-    val webViewState = rememberWebViewState("file:///android_asset/snapshot-review/index.html")
+    // 注入快照数据到 window.__GKD_SNAPSHOT__ / __GKD_SCREENSHOT__
+    fun injectSnapshot(view: WebView) {
+        val json = snapshotJson ?: return
+        // 转义 JSON 用于 JS 字符串
+        val escapedJson = JSONObject.quote(json)
+        val escapedShot = screenshotBase64?.let { JSONObject.quote(it) } ?: "null"
+        view.evaluateJavascript(
+            """
+            (function() {
+                try {
+                    window.__GKD_SNAPSHOT__ = JSON.parse($escapedJson);
+                    ${if (screenshotBase64 != null) "window.__GKD_SCREENSHOT__ = $escapedShot;" else ""}
+                    // 如果 inspect 已加载完成，触发重新加载
+                    if (window.__gkdInspectReload) window.__gkdInspectReload();
+                } catch(e) { console.error('GKD snapshot inject failed', e); }
+            })();
+            """.trimIndent(),
+            null
+        )
+    }
+
+    val webViewState = rememberWebViewState(
+        url = inspectUrl ?: "file:///android_asset/snapshot-review/index.html"
+    )
+
     val webViewClient = remember {
         object : AccompanistWebViewClient() {
             override fun onPageFinished(view: WebView, url: String?) {
                 super.onPageFinished(view, url)
-                snapshotJson?.let { json ->
-                    val escaped = JSONObject.quote(json)
-                    view.evaluateJavascript("if(window.loadSnapshot){window.loadSnapshot($escaped)}", null)
+                // 官方 inspect：注入数据
+                if (url?.contains("inspect") == true || inspectUrl != null) {
+                    injectSnapshot(view)
+                } else {
+                    // 降级：本地自定义版
+                    snapshotJson?.let { json ->
+                        val escaped = JSONObject.quote(json)
+                        view.evaluateJavascript("if(window.loadSnapshot){window.loadSnapshot($escaped)}", null)
+                    }
                 }
             }
         }
     }
 
-    // Re-inject when data arrives after page load
-    LaunchedEffect(snapshotJson, webView) {
+    // 数据到达后重新注入
+    LaunchedEffect(snapshotJson, screenshotBase64, webView, inspectUrl) {
         val wv = webView ?: return@LaunchedEffect
-        val json = snapshotJson ?: return@LaunchedEffect
+        if (snapshotJson == null) return@LaunchedEffect
         if (webViewState.loadingState is LoadingState.Finished) {
-            val escaped = JSONObject.quote(json)
-            wv.evaluateJavascript("if(window.loadSnapshot){window.loadSnapshot($escaped)}", null)
+            injectSnapshot(wv)
         }
     }
 
@@ -110,22 +172,77 @@ fun SnapshotWebReviewPage(route: SnapshotWebReviewRoute) {
             TopAppBar(title = { Text("网页审核 Web Review") })
         },
     ) { padding ->
-        WebView(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding),
-            state = webViewState,
-            client = webViewClient,
-            onCreated = {
-                webView = it
-                it.addJavascriptInterface(jsApi, "GkdBridge")
-                it.settings.apply {
-                    javaScriptEnabled = true
-                    domStorageEnabled = true
-                    allowFileAccess = true
-                    mediaPlaybackRequiresUserGesture = false
-                }
-            },
-        )
+                .padding(padding)
+        ) {
+            if (loadingInspect) {
+                CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+            } else if (inspectError != null && inspectUrl == null) {
+                // 完全失败时显示错误
+                Text(
+                    text = inspectError ?: "未知错误",
+                    modifier = Modifier.align(Alignment.Center)
+                )
+            } else {
+                WebView(
+                    modifier = Modifier.fillMaxSize(),
+                    state = webViewState,
+                    client = webViewClient,
+                    onCreated = {
+                        webView = it
+                        it.addJavascriptInterface(jsApi, "GkdBridge")
+                        it.settings.apply {
+                            javaScriptEnabled = true
+                            domStorageEnabled = true
+                            allowFileAccess = true
+                            allowContentAccess = true
+                            mediaPlaybackRequiresUserGesture = false
+                        }
+                    },
+                )
+            }
+        }
     }
+}
+
+/**
+ * 准备官方 inspect 工具：从 GitHub Pages 下载 ZIP 并解压到内部存储。
+ * 已解压则直接返回目录。
+ */
+private fun prepareInspectTool(): File {
+    val dir = File(app.filesDir, "inspect-tool")
+    val marker = File(dir, ".ready")
+    // 如果已解压且版本匹配，直接返回
+    if (marker.exists() && File(dir, "index.html").exists()) {
+        return dir
+    }
+    // 下载 ZIP
+    val zipFile = File(app.cacheDir, "inspect-dist.zip")
+    URL(INSPECT_ZIP_URL).openStream().use { input ->
+        zipFile.outputStream().use { output ->
+            input.copyTo(output)
+        }
+    }
+    // 解压
+    dir.deleteRecursively()
+    dir.mkdirs()
+    ZipInputStream(zipFile.inputStream()).use { zis ->
+        var entry = zis.nextEntry
+        while (entry != null) {
+            val outFile = File(dir, entry.name)
+            if (entry.isDirectory) {
+                outFile.mkdirs()
+            } else {
+                outFile.parentFile?.mkdirs()
+                outFile.outputStream().use { zis.copyTo(it) }
+            }
+            zis.closeEntry()
+            entry = zis.nextEntry
+        }
+    }
+    zipFile.delete()
+    marker.createNewFile()
+    return dir
 }
