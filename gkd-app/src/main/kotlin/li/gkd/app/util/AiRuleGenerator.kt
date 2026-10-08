@@ -317,19 +317,32 @@ object AiRuleGenerator {
             val ruleText = extractContent(result)
             LogUtils.d("AI after extractContent (first 2000 chars): ${ruleText.take(2000)}")
 
-            val currentRule = parseAndValidateRule(ruleText)
+            val currentRule = parseAndValidateRule(ruleText)?.takeIf { subs ->
+                subs.apps.any { app -> app.groups.any { g -> g.rules.isNotEmpty() } }
+            }
             if (currentRule == null) {
                 ToastUtils.toast("AI 生成的规则 JSON 不合法，重试中...")
                 val retryResult = callAiApi(config, userContent)
                 val retryText = extractContent(retryResult)
-                val retryParsed = parseAndValidateRule(retryText)
+                val retryParsed = parseAndValidateRule(retryText)?.takeIf { subs ->
+                    subs.apps.any { app -> app.groups.any { g -> g.rules.isNotEmpty() } }
+                }
                 if (retryParsed == null) {
-                    ToastUtils.toast("AI 生成规则失败：JSON 解析错误")
+                    ToastUtils.toast("AI 生成规则失败：返回内容为空或格式错误，请重试")
+                    LogUtils.d("AI retry also failed, text: ${retryText.take(1000)}")
                     return
                 }
-                insertRuleToSubscription(retryParsed)
+                val retryOk = insertRuleToSubscription(retryParsed)
+                if (!retryOk) {
+                    ToastUtils.toast("AI 生成规则失败：规则内容为空")
+                    return
+                }
             } else {
-                insertRuleToSubscription(currentRule)
+                val ok = insertRuleToSubscription(currentRule)
+                if (!ok) {
+                    ToastUtils.toast("AI 生成规则失败：规则内容为空")
+                    return
+                }
             }
             ToastUtils.toast("AI 规则生成成功并已添加到本地规则")
         } catch (e: Exception) {
@@ -647,8 +660,9 @@ $previousRule
         }
     }
 
-    private suspend fun insertRuleToSubscription(newSubs: RawSubscription) {
-        val newApp = newSubs.apps.firstOrNull() ?: return
+    private suspend fun insertRuleToSubscription(newSubs: RawSubscription): Boolean {
+        val newApp = newSubs.apps.firstOrNull { app -> app.groups.any { it.rules.isNotEmpty() } }
+            ?: return false
         SubscriptionRepository.update(LOCAL_SUBS_ID) { currentSubs ->
             val existingApp = currentSubs.apps.find { it.id == newApp.id }
 
@@ -672,6 +686,7 @@ $previousRule
                 )
             }
         }
+        return true
     }
 }
 
