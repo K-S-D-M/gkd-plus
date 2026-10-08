@@ -21,4 +21,8 @@
     <path
         android:fillColor="@color/ic_launcher_foreground_tint"
         android:pathData="M57.82,29l8.49,8.49l-2.82,2.84l-8.49,-8.49z" />
+    <!-- 定制版标记：右上角小圆点 -->
+    <path
+        android:fillColor="@color/ic_launcher_foreground_tint"
+        android:pathData="M84,22m-6,0a6,6 0 1,0 12,0a6,6 0 1,0 -12,0" />
 </vector>
