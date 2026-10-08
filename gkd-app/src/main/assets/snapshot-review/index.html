@@ -305,6 +305,25 @@ function getSiblings(n){
   return sibIds.filter(id=>(nodeMap[id].attr||{}).name===myName);
 }
 
+function getSelectedNodeInfo(){
+  if(selected==null||!nodeMap[selected])return null;
+  const n=nodeMap[selected];
+  // 构建包含祖先链和兄弟信息的完整上下文
+  const chain=[];let cur=n;
+  while(cur){chain.unshift({id:cur.id,text:cur.text,desc:cur.desc,vid:cur.vid,cls:cur.cls,clickable:cur.clickable});cur=cur.parentId!=null?nodeMap[cur.parentId]:null;}
+  // 兄弟节点
+  const siblings=[];
+  if(n.parentId!=null&&nodeMap[n.parentId]){
+    const parent=nodeMap[n.parentId];
+    (parent.children||[]).forEach(cid=>{
+      if(cid!==n.id&&nodeMap[cid]){
+        const s=nodeMap[cid];
+        siblings.push({id:s.id,text:s.text,desc:s.desc,vid:s.vid,cls:s.cls});
+      }
+    });
+  }
+  return JSON.stringify({node:{id:n.id,text:n.text,desc:n.desc,vid:n.vid,cls:n.cls,clickable:n.clickable,bounds:n.bounds},ancestors:chain.slice(0,-1),siblings:siblings.slice(0,10)});
+}
 function selectNode(id){
   selected=id;
   const n=nodeMap[id];
@@ -313,6 +332,7 @@ function selectNode(id){
   renderBreadcrumb(n);
   $('detail').style.display='flex';
   renderDetail(n);
+  updateAiButton(n);
   // 滚动到选中项
   const el=document.querySelector('.node-item.selected');
   if(el)el.scrollIntoView({block:'nearest'});
@@ -410,6 +430,29 @@ window.addEventListener('resize',layoutOverlay);
 window.loadSnapshot=function(json){init(json)};
 if(window.GkdBridge&&GkdBridge.getSnapshotJson){
   try{init(GkdBridge.getSnapshotJson())}catch(e){}
+}
+</script>
+
+<script>
+function updateAiButton(n){
+  let btn=document.getElementById('aiGenBtn');
+  if(!btn){
+    btn=document.createElement('button');
+    btn.id='aiGenBtn';
+    btn.style.cssText='position:fixed;bottom:80px;right:16px;z-index:999;background:#7c4dff;color:#fff;border:none;border-radius:24px;padding:12px 20px;font-size:14px;box-shadow:0 2px 8px rgba(0,0,0,0.3);';
+    btn.textContent='🤖 AI 生成规则';
+    btn.onclick=function(){
+      const info=getSelectedNodeInfo();
+      if(!info){alert('请先选择一个节点');return;}
+      if(window.GkdBridge&&GkdBridge.aiGenerateRule){
+        GkdBridge.aiGenerateRule(info);
+      }else{
+        alert('AI 功能不可用');
+      }
+    };
+    document.body.appendChild(btn);
+  }
+  btn.style.display=n?'block':'none';
 }
 </script>
 </body>

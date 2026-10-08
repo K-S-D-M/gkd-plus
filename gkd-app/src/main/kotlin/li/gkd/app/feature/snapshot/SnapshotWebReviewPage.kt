@@ -36,6 +36,9 @@ import org.json.JSONObject
 import java.io.File
 import java.net.URL
 import java.util.zip.ZipInputStream
+import li.gkd.app.util.AiRuleGenerator
+import li.gkd.app.util.appScope
+import li.gkd.app.util.launchLogged
 
 @Serializable
 data class SnapshotWebReviewRoute(
@@ -108,6 +111,21 @@ fun SnapshotWebReviewPage(route: SnapshotWebReviewRoute) {
             @JavascriptInterface
             fun toast(text: String) {
                 ToastUtils.toast(text)
+            }
+
+            @JavascriptInterface
+            fun aiGenerateRule(nodeInfoJson: String) {
+                // 从 WebView 线程切换到主线程处理
+                android.os.Handler(android.os.Looper.getMainLooper()).post {
+                    appScope.launchLogged {
+                        try {
+                            ToastUtils.toast("AI 正在为选中节点生成规则...", forced = true)
+                            AiRuleGenerator.generateRuleForNode(route.snapshotId, nodeInfoJson)
+                        } catch (e: Exception) {
+                            ToastUtils.toast("AI 生成失败：${e.message}")
+                        }
+                    }
+                }
             }
         }
     }

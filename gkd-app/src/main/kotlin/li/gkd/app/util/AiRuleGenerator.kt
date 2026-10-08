@@ -296,6 +296,73 @@ object AiRuleGenerator {
         }
     }
 
+    /**
+     * 为用户选中的特定节点生成规则
+     * @param snapshotId 快照 ID
+     * @param nodeInfoJson 选中节点的 JSON（含祖先链和兄弟节点信息）
+     */
+    suspend fun generateRuleForNode(snapshotId: Long, nodeInfoJson: String) {
+        val config = storeFlow.value.activeAiProvider()
+        if (config == null || !config.usable) {
+            ToastUtils.toast("请先在 AI 设置中选择并配置服务商")
+            return
+        }
+        isGenerating.value = true
+        try {
+            ToastUtils.toast("AI 正在为选中节点生成规则...", forced = true)
+            val prompt = loadPrompt()
+            val snapshotJson = withContext(Dispatchers.IO) {
+                SnapshotRepository.snapshotFile(snapshotId).readText()
+            }
+
+            // 构建针对选中节点的专用 prompt
+            val nodePrompt = buildString {
+                appendLine("## 用户已选中目标节点")
+                appendLine("用户在快照审查界面中明确选中了以下节点，请专门为这个节点生成点击/关闭规则：")
+                appendLine("```json")
+                appendLine(nodeInfoJson)
+                appendLine("```")
+                appendLine()
+                appendLine("### 重要：复杂节点的定位策略")
+                appendLine("如果目标节点本身没有 id/文本/描述（vid/text/desc 为空），必须使用关系定位：")
+                appendLine("1. **父子关系**：通过有特征的父节点定位，如 `parent[id="xxx"] > child[index=2]`")
+                appendLine("2. **兄弟关系**：通过有文本的兄弟节点定位，如 `text="跳过" + sibling(index=1)`")
+                appendLine("3. **祖先链**：逐层向上找有特征的祖先，组合成完整路径")
+                appendLine("4. **位置索引**：同类节点中用 index 区分，如 `class="ImageView"[index=3]`")
+                appendLine("5. **组合条件**：多个弱特征组合，如 `class="TextView"[text.length>0][clickable=true]`")
+                appendLine()
+                appendLine("绝对不要因为节点没有直接特征就返回空规则，必须尝试关系定位。")
+            }
+
+            val userContent = "$prompt\n$nodePrompt\n$snapshotJson"
+            LogUtils.d("AI generateRuleForNode: nodeInfo length=${nodeInfoJson.length}, total=${userContent.length}")
+
+            val result = callAiApi(config, userContent)
+            val ruleText = extractContent(result)
+            LogUtils.d("AI node rule (first 2000 chars): ${ruleText.take(2000)}")
+
+            val currentRule = parseAndValidateRule(ruleText)?.takeIf { subs ->
+                subs.apps.any { app -> app.groups.any { g -> g.rules.isNotEmpty() } }
+            }
+            if (currentRule == null) {
+                ToastUtils.toast("AI 生成规则失败：返回内容为空或格式错误")
+                LogUtils.d("AI node rule failed, text: ${ruleText.take(1000)}")
+                return
+            }
+            val ok = insertRuleToSubscription(currentRule)
+            if (ok) {
+                ToastUtils.toast("AI 规则生成成功并已添加到本地规则")
+            } else {
+                ToastUtils.toast("AI 生成规则失败：规则内容为空")
+            }
+        } catch (e: Exception) {
+            ToastUtils.toast("AI 生成规则失败：${e.message}")
+            LogUtils.d("AI node rule generation failed", e)
+        } finally {
+            isGenerating.value = false
+        }
+    }
+
     private suspend fun processRule(snapshotId: Long) {
         val config = storeFlow.value.activeAiProvider()
             ?: run {
