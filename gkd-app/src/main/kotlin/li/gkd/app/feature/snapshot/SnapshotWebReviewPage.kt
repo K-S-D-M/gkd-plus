@@ -37,7 +37,7 @@ import java.io.File
 import java.net.URL
 import java.util.zip.ZipInputStream
 import li.gkd.app.util.AiRuleGenerator
-import li.gkd.app.util.appScope
+import li.gkd.app.appScope
 import li.gkd.app.util.launchLogged
 
 @Serializable

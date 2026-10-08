@@ -173,7 +173,7 @@ fun SnapshotPreviewPage(route: SnapshotPreviewRoute) {
                     onDelete = { actions.delete(snapshot) },
                     onWebReview = { mainVm.navigatePage(SnapshotWebReviewRoute(snapshot.id)) },
                     onAiGenerate = {
-                        mainVm.viewModelScope.launch {
+                        mainVm.scope.launch {
                             AiRuleGenerator.generateRule(snapshot.id)
                         }
                     },
