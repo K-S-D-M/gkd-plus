@@ -39,6 +39,7 @@ import kotlinx.serialization.Serializable
 import li.gkd.app.text.UiStrings
 import li.gkd.app.feature.log.A11yEventLogRoute
 import li.gkd.app.feature.log.ActivityLogRoute
+import li.gkd.app.feature.settings.ai.AiProvidersPageRoute
 import li.gkd.app.feature.snapshot.SnapshotPageRoute
 import li.gkd.app.feature.snapshot.SnapshotSettingsRoute
 import li.gkd.app.ui.CrashReportRoute
