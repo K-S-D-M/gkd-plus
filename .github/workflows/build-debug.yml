@@ -1,0 +1,19 @@
+name: build-debug
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths-ignore: ['LICENSE', '*.md']
+jobs:
+  build-android-debug:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: {distribution: 'temurin', java-version: '21'}
+      - uses: gradle/actions/setup-gradle@v4
+      - run: ./gradlew :gkd-app:assembleGkdDebug --no-daemon
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gkd-custom-debug-apk
+          path: gkd-app/build/outputs/apk/gkd/debug/*.apk
