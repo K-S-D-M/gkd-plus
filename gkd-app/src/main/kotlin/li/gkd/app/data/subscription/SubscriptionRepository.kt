@@ -39,6 +39,9 @@ object SubscriptionRepository {
     suspend fun existingUpdateUrls(): Set<String> =
         Db.subsItemDao.queryAll().mapNotNullTo(mutableSetOf()) { it.updateUrl }
 
+    // Personal preloaded subscription (custom build)
+    private const val PERSONAL_SUBS_URL = "https://k-s-d-m.github.io/gkd-subscription-public/gkd.json5"
+
     suspend fun initialize() = withContext(Dispatchers.IO) {
         updateMutex.withStateLock {
             snapshotFlow.value = Loadable.Loading
@@ -55,6 +58,26 @@ object SubscriptionRepository {
             }
         }
         ensureLocalSubscription()
+        ensurePersonalSubscription()
+    }
+
+    /**
+     * Preload the user's personal public subscription on first launch.
+     * If download fails (e.g. no network), it will retry on next launch.
+     */
+    private suspend fun ensurePersonalSubscription() {
+        try {
+            val items = Db.subsItemDao.queryAll()
+            if (items.any { it.updateUrl == PERSONAL_SUBS_URL }) return
+            val result = addOrModifyRemote(PERSONAL_SUBS_URL)
+            if (result is SubscriptionResult.Success) {
+                LogUtils.d("Personal subscription preloaded: $PERSONAL_SUBS_URL")
+            } else {
+                LogUtils.d("Personal subscription preload failed, will retry next launch: $result")
+            }
+        } catch (e: Exception) {
+            LogUtils.d("Personal subscription preload error, will retry next launch", e)
+        }
     }
 
     private suspend fun ensureLocalSubscription() = withContext(Dispatchers.IO) {
