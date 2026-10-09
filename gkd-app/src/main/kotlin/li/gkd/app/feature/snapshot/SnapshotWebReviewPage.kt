@@ -114,12 +114,8 @@ fun SnapshotWebReviewPage(route: SnapshotWebReviewRoute) {
             @JavascriptInterface
             fun openAiSettings() {
                 android.os.Handler(android.os.Looper.getMainLooper()).post {
-                    try {
-                        // 导航到 AI 服务商设置页
-                        navController.navigate("ai_providers")
-                    } catch (e: Exception) {
-                        ToastUtils.toast("无法打开 AI 设置：${e.message}")
-                    }
+                    // TODO: 跳转到 AI 服务商设置页（需确认路由名）
+                    ToastUtils.toast("AI 设置入口：请在 App 设置-高级设置-AI 服务商中配置")
                 }
             }
 
