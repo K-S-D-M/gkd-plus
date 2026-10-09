@@ -382,13 +382,11 @@ object AiRuleGenerator {
             val userContent = "$prompt\n$snapshotJson"
             LogUtils.d("AI generateRule: prompt length=${prompt.length}, snapshot length=${snapshotJson.length}, total=${userContent.length}")
 
-            onProgress("正在生成选择器…")
             val result = callAiApi(config, userContent)
             LogUtils.d("AI extracted content (first 2000 chars): ${result.take(2000)}")
             val ruleText = extractContent(result)
             LogUtils.d("AI after extractContent (first 2000 chars): ${ruleText.take(2000)}")
 
-            onProgress("正在校验…")
             val currentRule = parseAndValidateRule(ruleText)?.takeIf { subs ->
                 subs.apps.any { app -> app.groups.any { g -> g.rules.isNotEmpty() } }
             }
