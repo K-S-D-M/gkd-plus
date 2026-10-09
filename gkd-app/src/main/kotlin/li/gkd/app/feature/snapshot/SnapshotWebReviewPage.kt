@@ -63,7 +63,7 @@ fun SnapshotWebReviewPage(route: SnapshotWebReviewRoute) {
 
     // 1. 准备本地自定义审核页（主方案，稳定可靠）
     // 官方 inspect 作为实验选项，默认使用本地版
-    val startUrl = "file:///android_asset/snapshot-review/index.html"
+    val startUrl = "https://k-s-d-m.github.io/gkd-subscription-public/"
     val webViewState = rememberWebViewState(url = startUrl)
 
     // 2. 加载快照数据
@@ -129,6 +129,15 @@ fun SnapshotWebReviewPage(route: SnapshotWebReviewRoute) {
 
     val webViewClient = remember {
         object : AccompanistWebViewClient() {
+            override fun onPageStarted(view: WebView?, url: String?) {
+                super.onPageStarted(view, url)
+                // 尽早注入，Vue 应用初始化时就能读到
+                val json = snapshotJsonRef.get()
+                if (json != null && view != null) {
+                    injectSnapshotEarly(view, json, screenshotRef.get())
+                }
+            }
+
             override fun onPageFinished(view: WebView, url: String?) {
                 super.onPageFinished(view, url)
                 pageReady = true
@@ -192,6 +201,21 @@ fun SnapshotWebReviewPage(route: SnapshotWebReviewRoute) {
                 }
             }
         }
+    }
+}
+
+/** 页面开始加载时尽早注入（供 Vue 初始化读取） */
+private fun injectSnapshotEarly(view: WebView, json: String, screenshotB64: String?) {
+    try {
+        val escaped = JSONObject.quote(json)
+        // 直接设置 window 变量，Vue 初始化时读取
+        view.evaluateJavascript("window.__GKD_SNAPSHOT__ = $escaped;", null)
+        if (screenshotB64 != null) {
+            val escapedShot = JSONObject.quote(screenshotB64)
+            view.evaluateJavascript("window.__GKD_SCREENSHOT__ = $escapedShot;", null)
+        }
+    } catch (e: Exception) {
+        LogUtils.d("尽早注入失败", e)
     }
 }
 
