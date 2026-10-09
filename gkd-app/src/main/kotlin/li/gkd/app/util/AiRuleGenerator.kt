@@ -431,7 +431,7 @@ object AiRuleGenerator {
      * 3. 对比两次节点树判断规则是否生效
      * 4. 未生效则将失败规则加入 prompt，让 AI 重新生成
      */
-    suspend fun enhancedGenerate() {
+    suspend fun enhancedGenerate(onProgress: (String) -> Unit = {}) {
         if (!storeFlow.value.aiEnable) {
             ToastUtils.toast("请先启用 AI 规则")
             return
