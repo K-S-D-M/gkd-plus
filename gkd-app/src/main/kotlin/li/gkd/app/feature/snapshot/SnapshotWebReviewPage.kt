@@ -211,6 +211,12 @@ fun SnapshotWebReviewPage(route: SnapshotWebReviewRoute) {
                                 setSupportZoom(true)
                                 builtInZoomControls = true
                                 displayZoomControls = false
+                                // 使 viewport meta 生效（等比缩放）
+                                useWideViewPort = true
+                                loadWithOverviewMode = true
+                                // 缓存加速
+                                cacheMode = android.webkit.WebSettings.LOAD_DEFAULT
+                                domStorageEnabled = true
                             }
                             // 页面加载完成后会通过 onPageFinished 注入数据
                         },
