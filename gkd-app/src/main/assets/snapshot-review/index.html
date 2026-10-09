@@ -77,8 +77,8 @@ body{font-family:system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-se
 <div><h1>快照审查 <span style="font-weight:400;font-size:13px;color:#999">Snapshot Review</span></h1>
 <div class="sub">点击截图节点或列表生成选择器 · 支持层级树与规则生成</div></div>
 <div class="tabs">
-<button class="tab active" onclick="setMode('review')">审查</button>
-<button class="tab" onclick="setMode('rule')">规则</button>
+<button class="tab active" onclick="setMode('review', this)">审查</button>
+<button class="tab" onclick="setMode('rule', this)">规则</button>
 </div>
 </div>
 <div class="breadcrumb" id="breadcrumb" style="display:none"></div>
@@ -418,9 +418,9 @@ function setView(v){
 function setDetailTab(t){
   detailTab=t;renderDetail(nodeMap[selected]);
 }
-function setMode(m){
+function setMode(m, btn){
   document.querySelectorAll('.header .tab').forEach(b=>b.classList.remove('active'));
-  event.target.classList.add('active');
+  if(btn) btn.classList.add('active');
   if(m==='rule'&&selected!=null){detailTab='rule';$('detail').style.display='flex';renderDetail(nodeMap[selected]);}
   else if(m==='review'){$('detail').style.display=selected!=null?'flex':'none';}
 }
@@ -437,22 +437,31 @@ if(window.GkdBridge&&GkdBridge.getSnapshotJson){
 function updateAiButton(n){
   let btn=document.getElementById('aiGenBtn');
   if(!btn){
+    // 在 header 的 tabs 区域添加 AI 按钮
+    const tabs=document.querySelector('.header .tabs');
     btn=document.createElement('button');
     btn.id='aiGenBtn';
-    btn.style.cssText='position:fixed;bottom:80px;right:16px;z-index:999;background:#7c4dff;color:#fff;border:none;border-radius:24px;padding:12px 20px;font-size:14px;box-shadow:0 2px 8px rgba(0,0,0,0.3);';
-    btn.textContent='🤖 AI 生成规则';
+    btn.className='tab';
+    btn.style.cssText='background:#7c4dff;color:#fff;';
+    btn.textContent='🤖 AI';
+    btn.title='为选中节点生成 AI 规则';
     btn.onclick=function(){
       const info=getSelectedNodeInfo();
-      if(!info){alert('请先选择一个节点');return;}
+      if(!info){
+        if(window.GkdBridge&&GkdBridge.toast){GkdBridge.toast('请先选择一个节点');}
+        return;
+      }
       if(window.GkdBridge&&GkdBridge.aiGenerateRule){
         GkdBridge.aiGenerateRule(info);
       }else{
-        alert('AI 功能不可用');
+        if(window.GkdBridge&&GkdBridge.toast){GkdBridge.toast('AI 功能不可用');}
       }
     };
-    document.body.appendChild(btn);
+    tabs.appendChild(btn);
   }
   btn.style.display=n?'block':'none';
+  btn.disabled=!n;
+  btn.style.opacity=n?'1':'0.5';
 }
 </script>
 </body>
