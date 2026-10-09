@@ -29,16 +29,17 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import li.gkd.app.app
+import li.gkd.app.appScope
 import li.gkd.app.data.snapshot.SnapshotRepository
+import li.gkd.app.util.AiRuleGenerator
 import li.gkd.app.util.LogUtils
 import li.gkd.app.util.ToastUtils
+import li.gkd.app.util.launchLogged
 import org.json.JSONObject
 import java.io.File
 import java.net.URL
+import java.util.concurrent.atomic.AtomicReference
 import java.util.zip.ZipInputStream
-import li.gkd.app.util.AiRuleGenerator
-import li.gkd.app.appScope
-import li.gkd.app.util.launchLogged
 
 @Serializable
 data class SnapshotWebReviewRoute(
@@ -52,29 +53,18 @@ private const val INSPECT_ZIP_URL = "https://k-s-d-m.github.io/gkd-subscription-
 @SuppressLint("SetJavaScriptEnabled", "AddJavascriptInterface")
 @Composable
 fun SnapshotWebReviewPage(route: SnapshotWebReviewRoute) {
-    var webView by remember { mutableStateOf<WebView?>(null) }
+    var webViewRef by remember { mutableStateOf<WebView?>(null) }
+    // 用 AtomicReference 保证 JS 接口读到最新值
+    val snapshotJsonRef = remember { AtomicReference<String?>(null) }
+    val screenshotRef = remember { AtomicReference<String?>(null) }
     var snapshotJson by remember { mutableStateOf<String?>(null) }
-    var screenshotBase64 by remember { mutableStateOf<String?>(null) }
-    var inspectReady by remember { mutableStateOf(false) }
-    var loadingInspect by remember { mutableStateOf(true) }
-    var useOfficial by remember { mutableStateOf(false) }
+    var pageReady by remember { mutableStateOf(false) }
+    var loadError by remember { mutableStateOf<String?>(null) }
 
-    // 1. 准备官方 inspect 工具（下载 ZIP 并解压）
-    LaunchedEffect(Unit) {
-        try {
-            val inspectDir = withContext(Dispatchers.IO) {
-                prepareInspectTool()
-            }
-            val indexFile = File(inspectDir, "index.html")
-            useOfficial = indexFile.exists()
-        } catch (e: Exception) {
-            LogUtils.d(e)
-            useOfficial = false
-        } finally {
-            inspectReady = true
-            loadingInspect = false
-        }
-    }
+    // 1. 准备本地自定义审核页（主方案，稳定可靠）
+    // 官方 inspect 作为实验选项，默认使用本地版
+    val startUrl = "file:///android_asset/snapshot-review/index.html"
+    val webViewState = rememberWebViewState(url = startUrl)
 
     // 2. 加载快照数据
     LaunchedEffect(route.snapshotId) {
@@ -88,20 +78,28 @@ fun SnapshotWebReviewPage(route: SnapshotWebReviewRoute) {
                     Base64.encodeToString(shotFile.readBytes(), Base64.NO_WRAP)
                 } else null
             }
+            snapshotJsonRef.set(json)
+            screenshotRef.set(b64)
             snapshotJson = json
-            screenshotBase64 = b64
+            // 如果页面已加载完成，直接注入
+            webViewRef?.let { wv ->
+                if (pageReady) {
+                    injectSnapshotData(wv, json, b64)
+                }
+            }
         } catch (e: Exception) {
-            e.printStackTrace()
+            LogUtils.d("加载快照失败", e)
+            loadError = "加载快照失败：${e.message}"
         }
     }
 
     val jsApi = remember {
         object {
             @JavascriptInterface
-            fun getSnapshotJson(): String = snapshotJson ?: ""
+            fun getSnapshotJson(): String = snapshotJsonRef.get() ?: ""
 
             @JavascriptInterface
-            fun getScreenshot(): String = screenshotBase64 ?: ""
+            fun getScreenshot(): String = screenshotRef.get() ?: ""
 
             @JavascriptInterface
             fun copyText(text: String) {
@@ -115,7 +113,6 @@ fun SnapshotWebReviewPage(route: SnapshotWebReviewRoute) {
 
             @JavascriptInterface
             fun aiGenerateRule(nodeInfoJson: String) {
-                // 从 WebView 线程切换到主线程处理
                 android.os.Handler(android.os.Looper.getMainLooper()).post {
                     appScope.launchLogged {
                         try {
@@ -130,72 +127,27 @@ fun SnapshotWebReviewPage(route: SnapshotWebReviewRoute) {
         }
     }
 
-    // 注入快照数据到 window.__GKD_SNAPSHOT__ / __GKD_SCREENSHOT__
-    fun injectSnapshot(view: WebView) {
-        val json = snapshotJson ?: return
-        val escapedJson = JSONObject.quote(json)
-        val escapedShot = screenshotBase64?.let { JSONObject.quote(it) } ?: "null"
-        view.evaluateJavascript(
-            """
-            (function() {
-                try {
-                    window.__GKD_SNAPSHOT__ = JSON.parse($escapedJson);
-                    ${if (screenshotBase64 != null) "window.__GKD_SCREENSHOT__ = $escapedShot;" else ""}
-                    console.log('GKD snapshot injected');
-                } catch(e) { console.error('GKD snapshot inject failed', e); }
-            })();
-            """.trimIndent(),
-            null
-        )
-    }
-
-    val inspectDir = remember(useOfficial) {
-        if (useOfficial) File(app.filesDir, "inspect-tool") else null
-    }
-    val startUrl = if (useOfficial && inspectDir != null) {
-        "file://${File(inspectDir, "index.html").absolutePath}"
-    } else {
-        "file:///android_asset/snapshot-review/index.html"
-    }
-
-    val webViewState = rememberWebViewState(url = startUrl)
-
     val webViewClient = remember {
         object : AccompanistWebViewClient() {
             override fun onPageFinished(view: WebView, url: String?) {
                 super.onPageFinished(view, url)
-                if (useOfficial) {
-                    injectSnapshot(view)
-                } else {
-                    snapshotJson?.let { json ->
-                        val escaped = JSONObject.quote(json)
-                        view.evaluateJavascript("if(window.loadSnapshot){window.loadSnapshot($escaped)}", null)
-                    }
+                pageReady = true
+                val json = snapshotJsonRef.get()
+                if (json != null) {
+                    injectSnapshotData(view, json, screenshotRef.get())
                 }
             }
-        }
-    }
 
-    // 数据到达后重新注入（官方版）
-    LaunchedEffect(snapshotJson, screenshotBase64, webView, useOfficial, inspectReady) {
-        val wv = webView ?: return@LaunchedEffect
-        if (snapshotJson == null) return@LaunchedEffect
-        if (!inspectReady) return@LaunchedEffect
-        if (webViewState.loadingState is LoadingState.Finished) {
-            if (useOfficial) {
-                injectSnapshot(wv)
-            } else {
-                val escaped = JSONObject.quote(snapshotJson!!)
-                wv.evaluateJavascript("if(window.loadSnapshot){window.loadSnapshot($escaped)}", null)
+            override fun onReceivedError(
+                view: WebView,
+                request: android.webkit.WebResourceRequest?,
+                error: android.webkit.WebResourceError?
+            ) {
+                super.onReceivedError(view, request, error)
+                if (request?.isForMainFrame == true) {
+                    loadError = "页面加载失败：${error?.description}"
+                }
             }
-        }
-    }
-
-    // URL 变化时重新加载（从降级切换到官方版时）
-    LaunchedEffect(startUrl, webView) {
-        val wv = webView ?: return@LaunchedEffect
-        if (webViewState.loadingState is LoadingState.Finished) {
-            // 已经加载完成，不需要重复加载
         }
     }
 
@@ -209,65 +161,47 @@ fun SnapshotWebReviewPage(route: SnapshotWebReviewRoute) {
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            if (loadingInspect) {
-                CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
-            } else {
-                WebView(
-                    modifier = Modifier.fillMaxSize(),
-                    state = webViewState,
-                    client = webViewClient,
-                    onCreated = {
-                        webView = it
-                        it.addJavascriptInterface(jsApi, "GkdBridge")
-                        it.settings.apply {
-                            javaScriptEnabled = true
-                            domStorageEnabled = true
-                            allowFileAccess = true
-                            allowContentAccess = true
-                            allowFileAccessFromFileURLs = true
-                            allowUniversalAccessFromFileURLs = true
-                            mediaPlaybackRequiresUserGesture = false
-                        }
-                    },
-                )
+            when {
+                loadError != null -> {
+                    Text(
+                        text = loadError ?: "未知错误",
+                        modifier = Modifier.align(Alignment.Center)
+                    )
+                }
+                snapshotJson == null -> {
+                    CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+                }
+                else -> {
+                    WebView(
+                        modifier = Modifier.fillMaxSize(),
+                        state = webViewState,
+                        client = webViewClient,
+                        onCreated = { wv ->
+                            webViewRef = wv
+                            wv.addJavascriptInterface(jsApi, "GkdBridge")
+                            wv.settings.apply {
+                                javaScriptEnabled = true
+                                domStorageEnabled = true
+                                allowFileAccess = true
+                                allowContentAccess = true
+                                mediaPlaybackRequiresUserGesture = false
+                            }
+                            // 页面加载完成后会通过 onPageFinished 注入数据
+                        },
+                    )
+                }
             }
         }
     }
 }
 
-/**
- * 准备官方 inspect 工具：从 GitHub Pages 下载 ZIP 并解压到内部存储。
- * 已解压则直接返回目录。
- */
-private fun prepareInspectTool(): File {
-    val dir = File(app.filesDir, "inspect-tool")
-    val marker = File(dir, ".ready")
-    if (marker.exists() && File(dir, "index.html").exists()) {
-        return dir
+/** 向页面注入快照数据 */
+private fun injectSnapshotData(view: WebView, json: String, screenshotB64: String?) {
+    try {
+        val escaped = JSONObject.quote(json)
+        view.evaluateJavascript("if(window.loadSnapshot){window.loadSnapshot($escaped)}", null)
+        // 截图通过 getScreenshot() 接口按需获取，不在这里注入（太大）
+    } catch (e: Exception) {
+        LogUtils.d("注入快照失败", e)
     }
-    val zipFile = File(app.cacheDir, "inspect-dist.zip")
-    URL(INSPECT_ZIP_URL).openStream().use { input ->
-        zipFile.outputStream().use { output ->
-            input.copyTo(output)
-        }
-    }
-    dir.deleteRecursively()
-    dir.mkdirs()
-    ZipInputStream(zipFile.inputStream()).use { zis ->
-        var entry = zis.nextEntry
-        while (entry != null) {
-            val outFile = File(dir, entry.name)
-            if (entry.isDirectory) {
-                outFile.mkdirs()
-            } else {
-                outFile.parentFile?.mkdirs()
-                outFile.outputStream().use { zis.copyTo(it) }
-            }
-            zis.closeEntry()
-            entry = zis.nextEntry
-        }
-    }
-    zipFile.delete()
-    marker.createNewFile()
-    return dir
 }
