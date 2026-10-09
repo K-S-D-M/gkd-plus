@@ -124,8 +124,15 @@ fun SnapshotWebReviewPage(route: SnapshotWebReviewRoute) {
                 android.os.Handler(android.os.Looper.getMainLooper()).post {
                     appScope.launchLogged {
                         try {
-                            ToastUtils.toast("AI 正在为选中节点生成规则...", forced = true)
-                            AiRuleGenerator.generateRuleForNode(route.snapshotId, nodeInfoJson)
+                            AiRuleGenerator.generateRuleForNode(
+                                route.snapshotId,
+                                nodeInfoJson,
+                                onProgress = { step ->
+                                    android.os.Handler(android.os.Looper.getMainLooper()).post {
+                                        ToastUtils.toast(step, forced = true)
+                                    }
+                                }
+                            )
                         } catch (e: Exception) {
                             ToastUtils.toast("AI 生成失败：${e.message}")
                         }

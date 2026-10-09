@@ -301,7 +301,7 @@ object AiRuleGenerator {
      * @param snapshotId 快照 ID
      * @param nodeInfoJson 选中节点的 JSON（含祖先链和兄弟节点信息）
      */
-    suspend fun generateRuleForNode(snapshotId: Long, nodeInfoJson: String) {
+    suspend fun generateRuleForNode(snapshotId: Long, nodeInfoJson: String, onProgress: (String) -> Unit = {}) {
         val config = storeFlow.value.activeAiProvider()
         if (config == null || !config.usable) {
             ToastUtils.toast("请先在 AI 设置中选择并配置服务商")
@@ -310,6 +310,7 @@ object AiRuleGenerator {
         isGenerating.value = true
         try {
             ToastUtils.toast("AI 正在为选中节点生成规则...", forced = true)
+            onProgress("正在分析节点…")
             val prompt = loadPrompt()
             val snapshotJson = withContext(Dispatchers.IO) {
                 SnapshotRepository.snapshotFile(snapshotId).readText()
@@ -337,10 +338,12 @@ object AiRuleGenerator {
             val userContent = "$prompt\n$nodePrompt\n$snapshotJson"
             LogUtils.d("AI generateRuleForNode: nodeInfo length=${nodeInfoJson.length}, total=${userContent.length}")
 
+            onProgress("正在生成选择器…")
             val result = callAiApi(config, userContent)
             val ruleText = extractContent(result)
             LogUtils.d("AI node rule (first 2000 chars): ${ruleText.take(2000)}")
 
+            onProgress("正在校验…")
             val currentRule = parseAndValidateRule(ruleText)?.takeIf { subs ->
                 subs.apps.any { app -> app.groups.any { g -> g.rules.isNotEmpty() } }
             }
@@ -379,11 +382,13 @@ object AiRuleGenerator {
             val userContent = "$prompt\n$snapshotJson"
             LogUtils.d("AI generateRule: prompt length=${prompt.length}, snapshot length=${snapshotJson.length}, total=${userContent.length}")
 
+            onProgress("正在生成选择器…")
             val result = callAiApi(config, userContent)
             LogUtils.d("AI extracted content (first 2000 chars): ${result.take(2000)}")
             val ruleText = extractContent(result)
             LogUtils.d("AI after extractContent (first 2000 chars): ${ruleText.take(2000)}")
 
+            onProgress("正在校验…")
             val currentRule = parseAndValidateRule(ruleText)?.takeIf { subs ->
                 subs.apps.any { app -> app.groups.any { g -> g.rules.isNotEmpty() } }
             }
@@ -454,6 +459,7 @@ object AiRuleGenerator {
             ToastUtils.toast("加强模式：AI 正在生成规则...\n 请勿离开当前界面", forced = true)
             val prompt = loadPrompt()
             val userContent = "$prompt\n$snapshotJson"
+            onProgress("正在生成选择器…")
             val result = callAiApi(config, userContent)
             val ruleText = extractContent(result)
             var currentRule = parseAndValidateRule(ruleText) ?: run {
