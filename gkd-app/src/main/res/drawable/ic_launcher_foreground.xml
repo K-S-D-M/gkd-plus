@@ -21,16 +21,4 @@
     <path
         android:fillColor="@color/ic_launcher_foreground_tint"
         android:pathData="M57.82,29l8.49,8.49l-2.82,2.84l-8.49,-8.49z" />
-    <!-- 定制版标记：右上角小篮球 -->
-    <path
-        android:fillColor="@color/ic_launcher_foreground_tint"
-        android:pathData="M84,22m-6,0a6,6 0 1,0 12,0a6,6 0 1,0 -12,0" />
-    <path
-        android:strokeColor="@color/ic_launcher_background_tint"
-        android:strokeWidth="1"
-        android:pathData="M78,22 Q84,24 90,22" />
-    <path
-        android:strokeColor="@color/ic_launcher_background_tint"
-        android:strokeWidth="1"
-        android:pathData="M84,16 Q86,22 84,28" />
 </vector>
