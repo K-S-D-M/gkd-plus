@@ -129,11 +129,11 @@ fun SnapshotWebReviewPage(route: SnapshotWebReviewRoute) {
 
     val webViewClient = remember {
         object : AccompanistWebViewClient() {
-            override fun onPageStarted(view: WebView?, url: String?) {
-                super.onPageStarted(view, url)
+            override fun onPageStarted(view: WebView, url: String?, favicon: android.graphics.Bitmap?) {
+                super.onPageStarted(view, url, favicon)
                 // 尽早注入，Vue 应用初始化时就能读到
                 val json = snapshotJsonRef.get()
-                if (json != null && view != null) {
+                if (json != null) {
                     injectSnapshotEarly(view, json, screenshotRef.get())
                 }
             }
