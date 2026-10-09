@@ -112,6 +112,18 @@ fun SnapshotWebReviewPage(route: SnapshotWebReviewRoute) {
             }
 
             @JavascriptInterface
+            fun openAiSettings() {
+                android.os.Handler(android.os.Looper.getMainLooper()).post {
+                    try {
+                        // 导航到 AI 服务商设置页
+                        navController.navigate("ai_providers")
+                    } catch (e: Exception) {
+                        ToastUtils.toast("无法打开 AI 设置：${e.message}")
+                    }
+                }
+            }
+
+            @JavascriptInterface
             fun aiGenerateRule(nodeInfoJson: String) {
                 android.os.Handler(android.os.Looper.getMainLooper()).post {
                     appScope.launchLogged {
@@ -188,12 +200,17 @@ fun SnapshotWebReviewPage(route: SnapshotWebReviewRoute) {
                         onCreated = { wv ->
                             webViewRef = wv
                             wv.addJavascriptInterface(jsApi, "GkdBridge")
+                            wv.addJavascriptInterface(jsApi, "Android")
                             wv.settings.apply {
                                 javaScriptEnabled = true
                                 domStorageEnabled = true
                                 allowFileAccess = true
                                 allowContentAccess = true
                                 mediaPlaybackRequiresUserGesture = false
+                                // 缩放支持（配合网页端的 viewport width=1280）
+                                setSupportZoom(true)
+                                builtInZoomControls = true
+                                displayZoomControls = false
                             }
                             // 页面加载完成后会通过 onPageFinished 注入数据
                         },
