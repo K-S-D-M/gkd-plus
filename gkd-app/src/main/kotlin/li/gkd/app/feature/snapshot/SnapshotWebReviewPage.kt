@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -54,6 +55,13 @@ private const val INSPECT_ZIP_URL = "https://k-s-d-m.github.io/gkd-subscription-
 @Composable
 fun SnapshotWebReviewPage(route: SnapshotWebReviewRoute) {
     var webViewRef by remember { mutableStateOf<WebView?>(null) }
+
+    fun triggerAiGenerate() {
+        webViewRef?.evaluateJavascript(
+            "window.__GKD_triggerAiGenerate && window.__GKD_triggerAiGenerate()",
+            null
+        )
+    }
     // 用 AtomicReference 保证 JS 接口读到最新值
     val snapshotJsonRef = remember { AtomicReference<String?>(null) }
     val screenshotRef = remember { AtomicReference<String?>(null) }
@@ -177,7 +185,14 @@ fun SnapshotWebReviewPage(route: SnapshotWebReviewRoute) {
 
     Scaffold(
         topBar = {
-            TopAppBar(title = { Text("网页审核 Web Review") })
+            TopAppBar(
+                title = { Text("网页审核 Web Review") },
+                actions = {
+                    TextButton(onClick = { triggerAiGenerate() }) {
+                        Text("AI 生成规则")
+                    }
+                }
+            )
         },
     ) { padding ->
         Box(
