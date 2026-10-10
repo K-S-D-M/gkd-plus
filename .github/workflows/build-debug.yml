@@ -20,9 +20,12 @@ jobs:
           mkdir -p ~/.android
           echo "${{ secrets.DEBUG_KEYSTORE }}" | base64 -d > ~/.android/debug.keystore
       - run: ./gradlew :gkd-app:assembleGkdDebug --no-daemon
+      - name: 重命名 APK
+        run: |
+          cd gkd-app/build/outputs/apk/gkd/debug/
+          mv *.apk GKD定制版-debug-${{ github.run_number }}.apk
       - name: 创建发版
         uses: softprops/action-gh-release@v2
         with:
           tag_name: debug-${{ github.run_number }}
           files: gkd-app/build/outputs/apk/gkd/debug/*.apk
-
