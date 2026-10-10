@@ -58,7 +58,23 @@ fun SnapshotWebReviewPage(route: SnapshotWebReviewRoute) {
 
     fun triggerAiGenerate() {
         webViewRef?.evaluateJavascript(
-            "window.__GKD_triggerAiGenerate && window.__GKD_triggerAiGenerate()",
+            """
+            (function(){
+                try {
+                    if (window.__GKD_triggerAiGenerate) {
+                        window.__GKD_triggerAiGenerate();
+                    } else {
+                        var t = window.Android || window.GkdBridge;
+                        if (t && t.toast) {
+                            t.toast('AI 功能未就绪，请等待页面加载完成后再试');
+                        }
+                    }
+                } catch (e) {
+                    var t2 = window.Android || window.GkdBridge;
+                    if (t2 && t2.toast) t2.toast('AI 生成失败：' + e);
+                }
+            })()
+            """.trimIndent(),
             null
         )
     }
