@@ -3,6 +3,8 @@ package li.gkd.app.feature.snapshot
 import android.annotation.SuppressLint
 import android.util.Base64
 import android.webkit.JavascriptInterface
+import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -22,6 +24,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.navigation3.runtime.NavKey
+import androidx.webkit.WebViewAssetLoader
 import com.kevinnzou.web.AccompanistWebViewClient
 import com.kevinnzou.web.LoadingState
 import com.kevinnzou.web.WebView
@@ -51,6 +54,9 @@ data class SnapshotWebReviewRoute(
 
 /** 官方 inspect 工具 ZIP 包地址（GitHub Pages） */
 private const val INSPECT_ZIP_URL = "https://k-s-d-m.github.io/gkd-subscription-public/inspect-dist.zip"
+
+/** 本地 assets 快照审核页（WebViewAssetLoader 映射的虚拟域） */
+private const val LOCAL_REVIEW_URL = "https://appassets.androidplatform.net/assets/snapshot-review/index.html"
 
 @OptIn(ExperimentalMaterial3Api::class)
 @SuppressLint("SetJavaScriptEnabled", "AddJavascriptInterface")
@@ -89,8 +95,8 @@ fun SnapshotWebReviewPage(route: SnapshotWebReviewRoute) {
     var loadError by remember { mutableStateOf<String?>(null) }
 
     // 1. 准备本地自定义审核页（主方案，稳定可靠）
-    // 官方 inspect 作为实验选项，默认使用本地版
-    val startUrl = "https://k-s-d-m.github.io/gkd-subscription-public/"
+    // 使用 WebViewAssetLoader 从 assets/snapshot-review 本地加载 V13 前端
+    val startUrl = LOCAL_REVIEW_URL
     val webViewState = rememberWebViewState(url = startUrl)
 
     // 2. 加载快照数据
@@ -168,6 +174,14 @@ fun SnapshotWebReviewPage(route: SnapshotWebReviewRoute) {
         }
     }
 
+    // 3. WebViewAssetLoader：将 assets 目录映射到虚拟域，解决 ES module 的 CORS 限制
+    // https://appassets.androidplatform.net/assets/... -> assets/ 目录下文件
+    val assetLoader = remember {
+        WebViewAssetLoader.Builder()
+            .addPathHandler("/assets/", WebViewAssetLoader.AssetsPathHandler(app))
+            .build()
+    }
+
     val webViewClient = remember {
         object : AccompanistWebViewClient() {
             override fun onPageStarted(view: WebView, url: String?, favicon: android.graphics.Bitmap?) {
@@ -197,6 +211,14 @@ fun SnapshotWebReviewPage(route: SnapshotWebReviewRoute) {
                 if (request?.isForMainFrame == true) {
                     loadError = "页面加载失败：${error?.description}"
                 }
+            }
+
+            override fun shouldInterceptRequest(
+                view: WebView?,
+                request: WebResourceRequest?
+            ): WebResourceResponse? {
+                // 将 appassets.androidplatform.net 虚拟域的请求交给 WebViewAssetLoader 处理
+                return assetLoader.shouldInterceptRequest(request?.url ?: return null)
             }
         }
     }
