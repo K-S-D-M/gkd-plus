@@ -31,6 +31,8 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import li.gkd.app.app
 import li.gkd.app.appScope
+import li.gkd.app.MainViewModel
+import li.gkd.app.feature.settings.ai.AiProvidersPageRoute
 import li.gkd.app.data.snapshot.SnapshotRepository
 import li.gkd.app.util.AiRuleGenerator
 import li.gkd.app.util.LogUtils
@@ -54,6 +56,7 @@ private const val INSPECT_ZIP_URL = "https://k-s-d-m.github.io/gkd-subscription-
 @SuppressLint("SetJavaScriptEnabled", "AddJavascriptInterface")
 @Composable
 fun SnapshotWebReviewPage(route: SnapshotWebReviewRoute) {
+    val mainVm = MainViewModel.requireCurrent()
     var webViewRef by remember { mutableStateOf<WebView?>(null) }
 
     fun triggerAiGenerate() {
@@ -138,8 +141,7 @@ fun SnapshotWebReviewPage(route: SnapshotWebReviewRoute) {
             @JavascriptInterface
             fun openAiSettings() {
                 android.os.Handler(android.os.Looper.getMainLooper()).post {
-                    // TODO: 跳转到 AI 服务商设置页（需确认路由名）
-                    ToastUtils.toast("AI 设置入口：请在 App 设置-高级设置-AI 服务商中配置")
+                    mainVm.navigatePage(AiProvidersPageRoute)
                 }
             }
 
