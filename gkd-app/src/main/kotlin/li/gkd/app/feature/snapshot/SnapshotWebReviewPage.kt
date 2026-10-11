@@ -257,6 +257,8 @@ fun SnapshotWebReviewPage(route: SnapshotWebReviewRoute) {
                         client = webViewClient,
                         onCreated = { wv ->
                             webViewRef = wv
+                            // 手动 loadUrl：修复 kevinnzou 库在条件 compose 下不触发加载的问题
+                            wv.post { wv.loadUrl(startUrl) }
                             wv.addJavascriptInterface(jsApi, "GkdBridge")
                             wv.addJavascriptInterface(jsApi, "Android")
                             wv.settings.apply {
